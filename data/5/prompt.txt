@@ -1,0 +1,1 @@
+How many reasoning related training samples were collected?
