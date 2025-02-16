@@ -7,6 +7,8 @@ from pdf2image import convert_from_path
 import time
 import tempfile
 
+st.header("Long live long context (Gemini 2.0 Flash)")
+
 # Configure page
 st.set_page_config(page_title="Long live long context (Gemini 2.0 Flash)", layout="wide")
 
@@ -193,9 +195,6 @@ if "total_tokens" in st.session_state and st.session_state.total_tokens > 0:
     st.info(f"📄 Total tokens across all documents: {st.session_state.total_tokens:,}")
 
 # ------------------------------- Prompts section -------------------------------
-st.header("Prompts")
-
-
 def load_prompt(prompt_num):
     try:
         with open(f"data/{prompt_num}/prompt.txt", "r") as f:
@@ -239,10 +238,84 @@ def save_expected(prompt_num, content):
     except Exception as e:
         return False
 
+st.header("Prompts")
 
-# Display prompts (showing first 3 as example)
+# Add toggle for free tier
+use_free_tier = st.toggle("Free Gemini tier (adds timer if running all prompts)", value=False)
+
 # Get list of all folders in data directory
 data_folders = [f for f in os.listdir("data") if os.path.isdir(os.path.join("data", f))]
+
+# Add run all prompts button
+if st.button("▶️▶️▶️ Run all prompts"):
+    if "document_content" in st.session_state:
+        # Store responses in session state to display them under each prompt
+        if "all_responses" not in st.session_state:
+            st.session_state.all_responses = {}
+        
+        for i in range(len(data_folders)):
+            prompt = load_prompt(i)
+            expected = load_expected(i)
+            
+            try:
+                response = model.generate_content(
+                    f"""
+                    {system_prompt}
+
+                    ---
+                    {st.session_state.document_content}
+
+                    ---
+
+                    {prompt}
+                    """,
+                    generation_config={"temperature": 0},
+                )
+                
+                # Compare expected and actual results
+                comparison_response = model.generate_content(
+                    f"""
+                    Compare these two texts and return only 'True' if they convey the same meaning,
+                    or 'False' if they differ in meaning.
+                    Don't worry about units as long as the numerical value are the same.
+
+                    Do not add anything else. Just one word: 'True' or 'False'.
+                    
+                    Expected:
+                    {expected}
+                    
+                    Actual:
+                    {response.text}
+
+                    The meaning of the expected response and the actual response is the same. This statement is: 
+                    """,
+                    generation_config={
+                        "temperature": 0,
+                        "candidate_count": 1
+                    },
+                )
+                
+                is_accurate = comparison_response.text.strip().lower() == 'true'
+                
+                # Store response and accuracy for this prompt
+                st.session_state.all_responses[i] = {
+                    "response": response.text,
+                    "is_accurate": is_accurate
+                }
+
+                if use_free_tier:
+                    time.sleep(60)  # Wait 60 seconds between prompts on free tier
+
+            except Exception as e:
+                st.session_state.all_responses[i] = {
+                    "error": str(e)
+                }
+                continue
+        st.rerun()  # Rerun to display all responses
+    else:
+        st.warning("Please load documents first")
+
+# Display prompts section
 for i in range(len(data_folders)):
     id = load_id(i)
     st.subheader(f"Prompt {id}")
@@ -391,5 +464,34 @@ for i in range(len(data_folders)):
                 st.error(f"Error running prompt: {str(e)}")
         else:
             st.warning("Please load documents first")
+
+    # After the prompt and expected result displays, show the response if it exists
+    if "all_responses" in st.session_state and i in st.session_state.all_responses:
+        response_data = st.session_state.all_responses[i]
+        
+        if "error" in response_data:
+            st.error(f"Error running prompt: {response_data['error']}")
+        else:
+            st.write("Response:")
+            st.write(response_data["response"])
+            
+            if response_data["is_accurate"]:
+                st.markdown(
+                    """
+                    <div style='background-color: #90EE90; padding: 10px; border-radius: 5px;'>
+                        ✅ Response matches expected result
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            else:
+                st.markdown(
+                    """
+                    <div style='background-color: #FFB6C1; padding: 10px; border-radius: 5px;'>
+                        ❌ Response differs from expected result
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
     st.divider()
