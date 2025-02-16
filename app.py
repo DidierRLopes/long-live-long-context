@@ -7,10 +7,9 @@ from pdf2image import convert_from_path
 import time
 import tempfile
 
-st.header("Long live long context (Gemini 2.0 Flash)")
-
 # Configure page
 st.set_page_config(page_title="Long live long context (Gemini 2.0 Flash)", layout="wide")
+st.header("Long live long context (Gemini 2.0 Flash)")
 
 # API Key input
 api_key = st.text_input("Enter Gemini API Key", type="password")
